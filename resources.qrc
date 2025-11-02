@@ -1,0 +1,10 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/16x16/ledgreen.png</file>
+        <file>icons/16x16/ledred.png</file>
+        <file>icons/16x16/licq.png</file>
+        <file>icons/16x16/message.png</file>
+        <file>icons/16x16/settings.png</file>
+        <file>icons/16x16/typing.png</file>
+    </qresource>
+</RCC>
