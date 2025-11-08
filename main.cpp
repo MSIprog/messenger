@@ -1,7 +1,6 @@
 #include <QApplication>
 #include "user_list_widget.h"
-#include "detection_server.h"
-#include "seeker_client.h"
+#include "signaling_facade.h"
 
 int main(int argc, char *argv[])
 {
@@ -9,19 +8,10 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName("MSIprog");
     QCoreApplication::setApplicationName("Messenger");
 
-    auto signaling = std::make_shared<Signaling>();
-    if (!signaling->start())
+    SignalingFacade signalingFacade;
+    if (signalingFacade.getSignaling() == nullptr)
         return 1;
-
-    DetectionServer detectionServer;
-    if (!detectionServer.start(signaling->getPort()))
-        return 1;
-    QObject::connect(&detectionServer, &DetectionServer::peerFound, signaling.get(), &Signaling::addPeer);
-
-    SeekerClient seekerClient;
-    seekerClient.start(signaling->getPort());
-
-    auto messengerSignaling = std::make_shared<MessengerSignaling>(signaling);
+    auto messengerSignaling = std::make_shared<MessengerSignaling>(signalingFacade.getSignaling());
 
     UserListWidget w(messengerSignaling);
     w.show();

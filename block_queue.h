@@ -7,30 +7,39 @@
 class BlockQueue
 {
 public:
-	void AppendBlock(const QByteArray &a_block);
-	int GetSize() const
-	{
-		return m_size;
-	}
-	QByteArray TakeBlock(int size);
+    void appendBlock(const QByteArray &a_block);
+
+    qsizetype getSize() const
+    {
+        return m_size;
+    }
+
+    QByteArray takeBlock(qsizetype size);
 
 private:
-	QList<QByteArray> m_blocks;
-	int m_size = 0;
+    QList<QByteArray> m_blocks;
+
+    qsizetype m_size = 0;
 };
 
-class MessageQueue : private BlockQueue
+class MessageQueue
 {
 public:
-	static QByteArray GetMessageForWriting(QByteArray a_data);
+    using MessageSize = unsigned int;
 
-	void AppendBlock(const QByteArray &a_block);
-	bool IsMessageReady();
-	QByteArray TakeMessage();
+    static QByteArray createMessage(const QByteArray &a_rawData);
+
+    void appendRawData(const QByteArray &a_rawData);
+
+    bool messageIsReady() const;
+
+    QByteArray takeMessage();
 
 private:
-	//ожидаемая длина следующего сообщения
-	int m_next_message_size = -1;
+    void updateNextMessageSize();
+
+    BlockQueue m_data;
+    std::optional<MessageSize> m_nextMessageSize;
 };
 
 #endif // BLOCK_QUEUE_H

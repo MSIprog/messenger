@@ -29,7 +29,7 @@ void Signaling::sendSignal(QString a_name, QVariant a_value)
     buffer.open(QIODevice::WriteOnly);
     QDataStream stream(&buffer);
     stream << (char)0 << a_name << a_value;
-    auto data = MessageQueue::GetMessageForWriting(buffer.buffer());
+    auto data = MessageQueue::createMessage(buffer.buffer());
     for (auto peer : subscribedPeers)
     {
         auto bytesWritten = peer->write(data);
@@ -44,7 +44,7 @@ void Signaling::subscribe(QString a_name)
     buffer.open(QIODevice::WriteOnly);
     QDataStream stream(&buffer);
     stream << (char)1 << a_name;
-    auto data = MessageQueue::GetMessageForWriting(buffer.buffer());
+    auto data = MessageQueue::createMessage(buffer.buffer());
     for (auto peer : m_peers)
     {
         auto bytesWritten = peer->write(data);
@@ -59,7 +59,7 @@ void Signaling::unsubscribe(QString a_name)
     buffer.open(QIODevice::WriteOnly);
     QDataStream stream(&buffer);
     stream << (char)2 << a_name;
-    auto data = MessageQueue::GetMessageForWriting(buffer.buffer());
+    auto data = MessageQueue::createMessage(buffer.buffer());
     for (auto peer : m_peers)
     {
         auto bytesWritten = peer->write(data);
@@ -114,10 +114,10 @@ void Signaling::onDataReceived()
     if (peer == nullptr)
         return;
     auto& data = m_socketData[peer];
-    data.AppendBlock(peer->readAll());
-    while (data.IsMessageReady())
+    data.appendRawData(peer->readAll());
+    while (data.messageIsReady())
     {
-        QByteArray message = data.TakeMessage();
+        QByteArray message = data.takeMessage();
         QDataStream stream(message);
         char operationCode;
         QString name;
@@ -160,7 +160,7 @@ void Signaling::addSocket(QTcpSocket *a_peer)
         buffer.open(QIODevice::WriteOnly);
         QDataStream stream(&buffer);
         stream << (char)1 << signal;
-        auto data = MessageQueue::GetMessageForWriting(buffer.buffer());
+        auto data = MessageQueue::createMessage(buffer.buffer());
         auto bytesWritten = a_peer->write(data);
         Q_ASSERT(bytesWritten == data.size());
     }
