@@ -12,4 +12,5 @@ ResourceHolder::ResourceHolder()
     m_greenIcon = QIcon(":/icons/16x16/ledgreen.png");
     m_redIcon = QIcon(":/icons/16x16/ledred.png");
     m_messageIcon = QIcon(":/icons/16x16/message.png");
+    m_typingIcon = QIcon(":/icons/16x16/typing.png");
 }

@@ -17,9 +17,9 @@ class Signaling : public QObject
 public:
     bool start();
     quint16 getPort();
-    void sendSignal(QString a_name, QVariant a_value);
-    void subscribe(QString a_name);
-    void unsubscribe(QString a_name);
+    void sendSignal(const QString &a_name, const QVariant &a_value);
+    void subscribe(const QString &a_name);
+    void unsubscribe(const QString &a_name);
 
 public slots:
     void addPeer(QHostAddress a_address, quint16 a_port);
@@ -37,6 +37,9 @@ private:
     static QHostAddress getThisSubnetAddress(const QHostAddress &a_anotherAddress);
 
     void addSocket(QTcpSocket *a_socket);
+    template<typename T> QByteArray signalToByteArray(const T &a_signal);
+    template<typename T> bool tryHandleSignal(QTcpSocket *a_peer, char a_code, QDataStream &a_stream);
+    template<typename T> void handleSignal(QTcpSocket *a_peer, const T &a_signal);
 
     std::unique_ptr<QTcpServer> m_server;
     std::set<QString> m_subscriptions;

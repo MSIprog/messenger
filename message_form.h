@@ -30,9 +30,10 @@ signals:
 private slots:
     void showHistory(int a_tabIndex);
     void closeTab(int a_tabIndex);
-    void send(const QString &a_text);
+    void sendText(const QString &a_text);
+    void sendTyping(bool a_typing);
     void onMessageReceived(QString a_sender, QDateTime a_date, QString a_text);
-    void blinkMessages();
+    void changeIcons();
 
 private:
     void changeEvent(QEvent *a_event) override;
@@ -42,6 +43,7 @@ private:
     void appendHTML(const QString &a_text);
     static QString formatMessage(bool a_sentToSender, const QString &a_sender, const QDateTime &date, const QString &a_text);
     int getTabIndex(const QString &a_name);
+    QString getCurrentUser();
 
     Ui::MessageForm *m_ui = nullptr;
     std::shared_ptr<MessengerSignaling> m_signaling;

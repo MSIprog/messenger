@@ -36,7 +36,7 @@ private slots:
     void showStateMenu();
     void showDialog(QListWidgetItem *a_item);
     void autoKickUser();
-    void blinkMessages();
+    void changeIcons();
     void onUserInfoReceived(QString a_name, bool a_online);
 
 private:

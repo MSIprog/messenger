@@ -29,9 +29,15 @@ public:
         return m_messageIcon;
     }
 
+    const QIcon &getTypingIcon() const
+    {
+        return m_typingIcon;
+    }
+
 private:
     QIcon m_applicationIcon;
     QIcon m_greenIcon;
     QIcon m_redIcon;
     QIcon m_messageIcon;
+    QIcon m_typingIcon;
 };

@@ -12,12 +12,13 @@ MessageForm::MessageForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidge
 	m_ui->setupUi(this);
 	m_signaling = a_signaling;
 	connect(a_signaling.get(), &MessengerSignaling::messageReceived, this, &MessageForm::onMessageReceived);
-	connect(m_ui->typeField, &TypeField::textEntered, this, &MessageForm::send);
+	connect(m_ui->typeField, &TypeField::textEntered, this, &MessageForm::sendText);
+	connect(m_ui->typeField, &TypeField::typing, this, &MessageForm::sendTyping);
 	m_ui->tabBar->setExpanding(false);
 	m_ui->tabBar->setTabsClosable(true);
 	connect(m_ui->tabBar, &QTabBar::currentChanged, this, &MessageForm::showHistory);
 	connect(m_ui->tabBar, &QTabBar::tabCloseRequested, this, &MessageForm::closeTab);
-	connect(&m_blinkTimer, &QTimer::timeout, this, &MessageForm::blinkMessages);
+	connect(&m_blinkTimer, &QTimer::timeout, this, &MessageForm::changeIcons);
 	m_blinkTimer.start(500);
 
 	auto rect = QSettings().value("MessageFormGeometry").toRect();
@@ -104,20 +105,25 @@ void MessageForm::closeTab(int a_tabIndex)
 		close();
 }
 
-void MessageForm::send(const QString &a_text)
+void MessageForm::sendText(const QString &a_text)
 {
-	QString receiver = m_ui->tabBar->tabText(m_ui->tabBar->currentIndex());
+	QString receiver = getCurrentUser();
 	m_signaling->sendMessage(a_text, receiver);
 	auto message = formatMessage(false, m_signaling->getName(), QDateTime::currentDateTime(), a_text);
 	m_history[receiver] += message;
 	appendHTML(message);
 }
 
+void MessageForm::sendTyping(bool a_typing)
+{
+	m_signaling->sendTyping(getCurrentUser(), a_typing);
+}
+
 void MessageForm::onMessageReceived(QString a_sender, QDateTime a_date, QString a_text)
 {
 	auto formattedMessage = formatMessage(true, a_sender, a_date, a_text);
 	m_history[a_sender] += formattedMessage;
-	if (!isVisible() || m_ui->tabBar->tabText(m_ui->tabBar->currentIndex()) != a_sender)
+	if (!isVisible() || getCurrentUser() != a_sender)
 	{
 		m_unreadSenders.insert(a_sender);
 		return;
@@ -129,13 +135,21 @@ void MessageForm::onMessageReceived(QString a_sender, QDateTime a_date, QString 
 		m_unreadSenders.insert(a_sender);
 }
 
-void MessageForm::blinkMessages()
+void MessageForm::changeIcons()
 {
 	for (int i = 0; i < m_ui->tabBar->count(); i++)
 	{
 		auto name = m_ui->tabBar->tabText(i);
-		bool isOnline = m_onlineUsers.find(name) != m_onlineUsers.end();
-		m_ui->tabBar->setTabIcon(i, HasUnreadMessages(name) && m_blinkState ? ResourceHolder::get().getMessageIcon() : (isOnline ? ResourceHolder::get().getGreenIcon() : ResourceHolder::get().getRedIcon()));
+		QIcon icon;
+		if (HasUnreadMessages(name) && m_blinkState)
+			icon = ResourceHolder::get().getMessageIcon();
+		else if (m_signaling->isTyping(name))
+			icon = ResourceHolder::get().getTypingIcon();
+		else if (m_onlineUsers.find(name) != m_onlineUsers.end())
+			icon = ResourceHolder::get().getGreenIcon();
+		else
+			icon = ResourceHolder::get().getRedIcon();
+		m_ui->tabBar->setTabIcon(i, icon);
 	}
 	m_blinkState = !m_blinkState;
 }
@@ -148,7 +162,7 @@ void MessageForm::changeEvent(QEvent *a_event)
 	case QEvent::ActivationChange:
 	case QEvent::WindowStateChange:
 		if (QApplication::activeWindow() == this)
-			onMessagesRead(m_ui->tabBar->tabText(m_ui->tabBar->currentIndex()));
+			onMessagesRead(getCurrentUser());
 		break;
 	default:
 	    break;
@@ -199,4 +213,9 @@ int MessageForm::getTabIndex(const QString &a_name)
 		if (m_ui->tabBar->tabText(i) == a_name)
 			return i;
 	return -1;
+}
+
+QString MessageForm::getCurrentUser()
+{
+	return m_ui->tabBar->tabText(m_ui->tabBar->currentIndex());
 }

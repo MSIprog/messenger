@@ -20,7 +20,7 @@ UserListWidget::UserListWidget(std::shared_ptr<MessengerSignaling> a_signaling, 
     connect(m_ui->listWidget, &QListWidget::itemDoubleClicked, this, &UserListWidget::showDialog);
 	connect(&m_kickTimer, &QTimer::timeout, this, &UserListWidget::autoKickUser);
 	m_kickTimer.start(1000);
-	connect(&m_blinkTimer, &QTimer::timeout, this, &UserListWidget::blinkMessages);
+	connect(&m_blinkTimer, &QTimer::timeout, this, &UserListWidget::changeIcons);
 	m_blinkTimer.start(500);
 
 	m_messageForm = new MessageForm(m_signaling, this);
@@ -88,21 +88,28 @@ void UserListWidget::showDialog(QListWidgetItem *a_item)
 
 void UserListWidget::autoKickUser()
 {
-	// обратный порядок из-за удаления из m_users в RemoveUser
+	// обратный порядок из-за удаления из m_users в removeUser
 	for (int i = m_users.count() - 1; i >= 0; i--)
 		if (m_users[i].m_refresh_time.secsTo(QDateTime::currentDateTime()) >= 2)
 			removeUser(m_users[i].m_name);
 }
 
-void UserListWidget::blinkMessages()
+void UserListWidget::changeIcons()
 {
 	if (m_messageForm == nullptr)
 		return;
 	setWindowIcon(m_messageForm->HasUnreadMessages() && m_blinkState ? ResourceHolder::get().getMessageIcon() : ResourceHolder::get().getApplicationIcon());
 	for (int i = 0; i < m_users.count(); i++)
 	{
-		bool hasUnreadMessages = m_messageForm->HasUnreadMessages(m_users[i].m_name);
-		m_ui->listWidget->item(i)->setIcon(hasUnreadMessages && m_blinkState ? ResourceHolder::get().getMessageIcon() : ResourceHolder::get().getApplicationIcon());
+		auto name = m_users[i].m_name;
+		QIcon icon;
+		if (m_messageForm->HasUnreadMessages(name) && m_blinkState)
+			icon = ResourceHolder::get().getMessageIcon();
+		else if (m_signaling->isTyping(name))
+			icon = ResourceHolder::get().getTypingIcon();
+		else
+			icon = ResourceHolder::get().getApplicationIcon();
+		m_ui->listWidget->item(i)->setIcon(icon);
 	}
 	m_blinkState = !m_blinkState;
 }
