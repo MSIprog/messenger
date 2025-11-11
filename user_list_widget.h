@@ -14,12 +14,6 @@ namespace Ui
     class UserListWidget;
 }
 
-struct UserInfo
-{
-	QString m_name;
-	QDateTime m_refresh_time;
-};
-
 class UserListWidget : public QWidget
 {
     Q_OBJECT
@@ -29,15 +23,14 @@ public:
     ~UserListWidget();
 
 private slots:
-    void removeUser(QString a_name);
     void logon();
     void setOnline();
     void setOffline();
     void showStateMenu();
     void showDialog(QListWidgetItem *a_item);
-    void autoKickUser();
     void changeIcons();
-    void onUserInfoReceived(QString a_name, bool a_online);
+    void addUser(QString a_id, QString a_name);
+    void removeUser(QString a_id);
 
 private:
     int getUserIndex(const QString& a_name);
@@ -46,10 +39,8 @@ private:
 
     Ui::UserListWidget *m_ui = nullptr;
     std::shared_ptr<MessengerSignaling> m_signaling;
-    QList<UserInfo> m_users; // todo: store in qlistwidget / messagesignaler
     QMenu *m_states = nullptr;
     MessageForm *m_messageForm = nullptr;
-    QTimer m_kickTimer; // todo: move to messagesignaler
     QTimer m_blinkTimer;
     bool m_blinkState = false;
 };

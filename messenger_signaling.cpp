@@ -1,3 +1,4 @@
+#include <QUuid>
 #include "messenger_signaling.h"
 
 #define ATTRIBUTE(type,name) \
@@ -24,11 +25,13 @@ struct AttributeContainer
 //-------------------------------------------------------------------------------------------------
 struct UserInfoSignal : AttributeContainer
 {
+    ATTRIBUTE(QString, id);
     ATTRIBUTE(QString, name);
     ATTRIBUTE(bool, online);
 
-    UserInfoSignal(const QString &a_name, bool a_online)
+    UserInfoSignal(const QString &a_id, const QString &a_name, bool a_online)
     {
+        set_id(a_id);
         set_name(a_name);
         set_online(a_online);
     }
@@ -42,13 +45,11 @@ struct UserInfoSignal : AttributeContainer
 struct MessageSignal : AttributeContainer
 {
     ATTRIBUTE(QString, sender);
-    ATTRIBUTE(QString, receiver);
     ATTRIBUTE(QString, text);
 
-    MessageSignal(const QString &a_sender, const QString &a_receiver, const QString &a_text)
+    MessageSignal(const QString &a_sender, const QString &a_text)
     {
         set_sender(a_sender);
-        set_receiver(a_receiver);
         set_text(a_text);
     }
 
@@ -61,13 +62,11 @@ struct MessageSignal : AttributeContainer
 struct TypingSignal : AttributeContainer
 {
     ATTRIBUTE(QString, sender);
-    ATTRIBUTE(QString, receiver);
     ATTRIBUTE(bool, typing);
 
-    TypingSignal(const QString &a_sender, const QString &a_receiver, bool a_typing)
+    TypingSignal(const QString &a_sender, bool a_typing)
     {
         set_sender(a_sender);
-        set_receiver(a_receiver);
         set_typing(a_typing);
     }
 
@@ -82,9 +81,24 @@ MessengerSignaling::MessengerSignaling(std::shared_ptr<Signaling> a_signaling)
     m_signaling = a_signaling;
     connect(m_signaling.get(), &Signaling::signalReceived, this, &MessengerSignaling::onSignalReceived);
     m_signaling->subscribe(UserInfoSignal::g_signalName);
-    m_signaling->subscribe(MessageSignal::g_signalName);
-    m_signaling->subscribe(TypingSignal::g_signalName);
-    connect(&m_timer, &QTimer::timeout, this, &MessengerSignaling::sendUserInfo);
+    connect(&m_sendTimer, &QTimer::timeout, this, &MessengerSignaling::sendUserInfo);
+    connect(&m_kickTimer, &QTimer::timeout, this, &MessengerSignaling::autoKickUser);
+    m_kickTimer.start(1000);
+}
+
+QString MessengerSignaling::getId() const
+{
+    return m_id;
+}
+
+void MessengerSignaling::setId(const QString &a_id)
+{
+    m_signaling->unsubscribe(getSignalName(MessageSignal::g_signalName, m_id));
+    m_signaling->unsubscribe(getSignalName(TypingSignal::g_signalName, m_id));
+    m_id = a_id;
+    m_signaling->subscribe(getSignalName(MessageSignal::g_signalName, m_id));
+    m_signaling->subscribe(getSignalName(TypingSignal::g_signalName, m_id));
+    m_sendTimer.start(1000);
 }
 
 QString MessengerSignaling::getName() const
@@ -95,14 +109,26 @@ QString MessengerSignaling::getName() const
 void MessengerSignaling::setName(const QString &a_name)
 {
     m_name = a_name;
-    m_timer.start(1000);
 }
 
 void MessengerSignaling::setOnline(bool a_online)
 {
     m_online = a_online;
     if (m_online)
-        m_timer.start(1000);
+        m_sendTimer.start(1000);
+}
+
+bool MessengerSignaling::userIsOnline(const QString &a_id)
+{
+    return m_users.find(a_id) != m_users.end();
+}
+
+QString MessengerSignaling::getUserName(const QString &a_id)
+{
+    auto it = m_users.find(a_id);
+    if (it == m_users.end())
+        return QString();
+    return it->second.m_name;
 }
 
 QList<Message> MessengerSignaling::getMessages(const QString &a_sender)
@@ -110,10 +136,10 @@ QList<Message> MessengerSignaling::getMessages(const QString &a_sender)
     return m_history[a_sender];
 }
 
-void MessengerSignaling::sendMessage(const QString &a_text, const QString &a_receiver)
+void MessengerSignaling::sendMessage(const QString &a_receiver, const QString &a_text)
 {
-    sendSignal(MessageSignal(m_name, a_receiver, a_text));
-    m_history[m_name].append(Message(false, QDateTime::currentDateTime(), a_text));
+    m_signaling->sendSignal(getSignalName(MessageSignal::g_signalName, a_receiver), MessageSignal(m_id, a_text).toQVariant());
+    m_history[a_receiver].append(Message(false, QDateTime::currentDateTime(), a_text));
 }
 
 bool MessengerSignaling::isTyping(const QString &a_sender)
@@ -125,12 +151,12 @@ bool MessengerSignaling::isTyping(const QString &a_sender)
 
 void MessengerSignaling::sendTyping(const QString &a_receiver, bool a_typing)
 {
-    sendSignal(TypingSignal(m_name, a_receiver, a_typing));
+    m_signaling->sendSignal(getSignalName(TypingSignal::g_signalName, a_receiver), TypingSignal(m_id, a_typing).toQVariant());
 }
 
 void MessengerSignaling::sendUserInfo()
 {
-    sendSignal(UserInfoSignal(m_name, m_online));
+    m_signaling->sendSignal(UserInfoSignal::g_signalName, UserInfoSignal(m_id, m_name, m_online).toQVariant());
 }
 
 void MessengerSignaling::onSignalReceived(QString a_signal, QVariant a_value)
@@ -140,14 +166,27 @@ void MessengerSignaling::onSignalReceived(QString a_signal, QVariant a_value)
         tryHandleSignal<TypingSignal>(a_signal, a_value);
 }
 
-template<typename T> void MessengerSignaling::sendSignal(const T &a_signal)
+void MessengerSignaling::autoKickUser()
 {
-    m_signaling->sendSignal(T::g_signalName, a_signal.toQVariant());
+    std::vector<QString> removingIds;
+    for (auto &user : m_users)
+        if (user.second.m_refresh_time.secsTo(QDateTime::currentDateTime()) >= 2)
+            removingIds.push_back(user.first);
+    for (auto &id : removingIds)
+    {
+        m_users.erase(id);
+        emit userRemoved(id);
+    }
+}
+
+QString MessengerSignaling::getSignalName(const QString &a_prefix, const QString &a_id)
+{
+    return QString("%1_%2").arg(a_prefix).arg(a_id);
 }
 
 template<typename T> bool MessengerSignaling::tryHandleSignal(const QString &a_signal, const QVariant &a_value)
 {
-    if (a_signal != T::g_signalName)
+    if (a_signal.left(QString(T::g_signalName).length()) != T::g_signalName)
         return false;
     handleSignal<T>(T(a_value));
     return true;
@@ -160,24 +199,38 @@ template<typename T> void MessengerSignaling::handleSignal(const T &)
 
 template<> void MessengerSignaling::handleSignal(const UserInfoSignal &a_data)
 {
-    emit userInfoReceived(a_data.get_name(), a_data.get_online());
+    auto id = a_data.get_id();
+    if (id == m_id)
+        setId(QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+    if (!a_data.get_online())
+    {
+        m_users.erase(id);
+        emit userRemoved(id);
+        return;
+    }
+    auto it = m_users.find(id);
+    if (it != m_users.end())
+    {
+        it->second.m_refresh_time = QDateTime::currentDateTime();
+        return;
+    }
+    UserInfo user;
+    user.m_name = a_data.get_name();
+    user.m_refresh_time = QDateTime::currentDateTime();
+    m_users[id] = user;
+    emit userAdded(id, user.m_name);
 }
 
 template<> void MessengerSignaling::handleSignal(const MessageSignal &a_data)
 {
-    if (!a_data.get_receiver().isNull() && a_data.get_receiver() == m_name)
-    {
-        auto date = QDateTime::currentDateTime();
-        m_history[a_data.get_sender()].append(Message(true, date, a_data.get_text()));
-        emit messageReceived(a_data.get_sender(), date, a_data.get_text());
-    }
+    auto date = QDateTime::currentDateTime();
+    m_history[a_data.get_sender()].append(Message(true, date, a_data.get_text()));
+    emit messageReceived(a_data.get_sender(), date, a_data.get_text());
 }
 
 template<> void MessengerSignaling::handleSignal(const TypingSignal &a_data)
 {
-    if (!a_data.get_receiver().isNull() && a_data.get_receiver() == m_name)
-    {
-        m_typing[a_data.get_sender()] = a_data.get_typing();
-        emit typing(a_data.get_sender(), a_data.get_typing());
-    }
+    m_typing[a_data.get_sender()] = a_data.get_typing();
+    emit typing(a_data.get_sender(), a_data.get_typing());
 }

@@ -108,6 +108,8 @@ void Signaling::subscribe(const QString &a_name)
 
 void Signaling::unsubscribe(const QString &a_name)
 {
+    if (m_subscriptions.find(a_name) == m_subscriptions.end())
+        return;
     m_subscriptions.erase(a_name);
     auto data = signalToByteArray(UnsubscribeSignal(a_name));
     for (auto peer : m_peers)
