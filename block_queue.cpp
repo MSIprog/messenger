@@ -9,7 +9,7 @@ void BlockQueue::appendBlock(const QByteArray &a_block)
 QByteArray BlockQueue::takeBlock(qsizetype a_size)
 {
     if (a_size > m_size)
-        throw std::exception("BlockQueue.TakeBlock: requested more than stored");
+        throw std::exception("BlockQueue.takeBlock: requested more than stored");
     QByteArray result;
     auto size = a_size; // требуемое количество байт
     while (size != 0)
@@ -46,12 +46,12 @@ void MessageQueue::appendRawData(const QByteArray &a_rawData)
 
 bool MessageQueue::messageIsReady() const
 {
-    return m_nextMessageSize.has_value();
+    return m_nextMessageSize.has_value() && m_nextMessageSize.value() <= m_data.getSize();
 }
 
 QByteArray MessageQueue::takeMessage()
 {
-    if (!m_nextMessageSize.has_value())
+    if (!messageIsReady())
         throw std::exception("MessageQueue.takeMessage: message is not ready");
     auto result = m_data.takeBlock(m_nextMessageSize.value());
     m_nextMessageSize.reset();
