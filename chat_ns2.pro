@@ -11,7 +11,9 @@ SOURCES += main.cpp \
     block_queue.cpp \
     messenger_signaling.cpp \
     resource_holder.cpp \
-    signaling_facade.cpp
+    signaling_facade.cpp \
+    file_form.cpp \
+    settings.cpp
 HEADERS += user_list_widget.h \
     type_field.h \
     detection_server.h \
@@ -21,7 +23,10 @@ HEADERS += user_list_widget.h \
     block_queue.h \
     messenger_signaling.h \
     resource_holder.h \
-    signaling_facade.h
+    signaling_facade.h \
+    file_form.h \
+    settings.h
 FORMS += user_list_widget.ui \
-    message_form.ui
+    message_form.ui \
+    file_form.ui
 RESOURCES += resources.qrc

@@ -7,8 +7,6 @@ class ResourceHolder
 public:
     static const ResourceHolder& get();
 
-    ResourceHolder();
-
     const QIcon &getApplicationIcon() const
     {
         return m_applicationIcon;
@@ -34,10 +32,18 @@ public:
         return m_typingIcon;
     }
 
+    const QIcon &getFileIcon() const
+    {
+        return m_fileIcon;
+    }
+
 private:
+    ResourceHolder();
+
     QIcon m_applicationIcon;
     QIcon m_greenIcon;
     QIcon m_redIcon;
     QIcon m_messageIcon;
     QIcon m_typingIcon;
+    QIcon m_fileIcon;
 };

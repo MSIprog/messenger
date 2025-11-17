@@ -43,12 +43,17 @@ public:
     void sendMessage(const QString &a_receiver, const QString &a_text);
     bool isTyping(const QString &a_receiver);
     void sendTyping(const QString &a_receiver, bool a_typing);
+    void sendFileInfo(const QString &a_receiver, QString a_name, QDateTime a_modificationDate, size_t a_size);
+    void requestFileContents(const QString &a_receiver, QString a_name, size_t a_offset, size_t a_size);
+    void sendFileContents(const QString &a_receiver, QString a_name, size_t a_offset, const QByteArray &a_contents);
 
 signals:
     void userAdded(QString a_id, QString a_name);
     void userRemoved(QString a_id);
     void messageReceived(QString a_sender, QDateTime a_date, QString a_text);
     void typing(QString a_sender, bool a_typing);
+    void fileInfoReceived(QString a_sender, QString a_name, QDateTime a_modificationDate, size_t a_size);
+    void fileContentsReceived(QString a_sender, QString a_name, size_t a_offset, size_t a_size, QByteArray a_contents);
 
 private slots:
     void sendUserInfo();

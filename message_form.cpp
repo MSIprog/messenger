@@ -1,9 +1,9 @@
 ﻿#include <QScrollBar>
-#include <QSettings>
 #include <QDateTime>
 #include "message_form.h"
 #include "ui_message_form.h"
 #include "resource_holder.h"
+#include "settings.h"
 
 MessageForm::MessageForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidget *a_parent) :
     QWidget(a_parent, Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMaximizeButtonHint | Qt::WindowCloseButtonHint),
@@ -23,10 +23,10 @@ MessageForm::MessageForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidge
     connect(&m_blinkTimer, &QTimer::timeout, this, &MessageForm::changeIcons);
     m_blinkTimer.start(500);
 
-    auto rect = QSettings().value("MessageFormGeometry").toRect();
+    auto rect = Settings::get().value("MessageFormGeometry").toRect();
     if (rect != QRect())
         setGeometry(rect);
-    auto variantSizes = QSettings().value("MessageFormSplitterSizes").toList();
+    auto variantSizes = Settings::get().value("MessageFormSplitterSizes").toList();
     if (!variantSizes.isEmpty())
     {
         QList<int> sizes(variantSizes.size());
@@ -40,19 +40,19 @@ MessageForm::MessageForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidge
 
 MessageForm::~MessageForm()
 {
-    QSettings().setValue("MessageFormGeometry", geometry());
+    Settings::get().setValue("MessageFormGeometry", geometry());
     auto sizes = m_ui->splitter->sizes();
     QList<QVariant> variantSizes(sizes.size());
     std::transform(sizes.begin(), sizes.end(), variantSizes.begin(), [](auto a_size)
         {
             return a_size;
         });
-    QSettings().setValue("MessageFormSplitterSizes", variantSizes);
+    Settings::get().setValue("MessageFormSplitterSizes", variantSizes);
 
     delete m_ui;
 }
 
-void MessageForm::addDialog(const QString &a_id, const QString &a_name)
+void MessageForm::addDialog(const QString &a_id)
 {
     int tabIndex = getTabIndex(a_id);
     if (tabIndex != -1)
@@ -61,7 +61,7 @@ void MessageForm::addDialog(const QString &a_id, const QString &a_name)
         onMessagesRead(a_id);
         return;
     }
-    m_ui->tabBar->addTab(ResourceHolder::get().getGreenIcon(), a_name);
+    m_ui->tabBar->addTab(ResourceHolder::get().getGreenIcon(), m_signaling->getUserName(a_id));
     m_ui->tabBar->setCurrentIndex(m_ui->tabBar->count() - 1);
     m_ui->tabBar->setTabData(m_ui->tabBar->count() - 1, a_id);
     receiveHistory(a_id);
@@ -131,15 +131,10 @@ void MessageForm::onMessageReceived(QString a_sender, QDateTime a_date, QString 
     m_history[a_sender] += formattedMessage;
     if (getCurrentUserId() == a_sender)
         appendHTML(formattedMessage);
-    if (!isVisible() || getCurrentUserId() != a_sender)
-    {
+    if (!isVisible() || getCurrentUserId() != a_sender || !(windowState() & Qt::WindowActive))
         m_unreadSenders.insert(a_sender);
-        return;
-    }
-    if (windowState() & Qt::WindowActive)
-        onMessagesRead(a_sender);
     else
-        m_unreadSenders.insert(a_sender);
+        onMessagesRead(a_sender);
 }
 
 void MessageForm::changeIcons()

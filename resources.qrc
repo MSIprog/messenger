@@ -1,10 +1,19 @@
 <RCC>
-    <qresource prefix="/">
-        <file>icons/16x16/ledgreen.png</file>
-        <file>icons/16x16/ledred.png</file>
-        <file>icons/16x16/licq.png</file>
-        <file>icons/16x16/message.png</file>
-        <file>icons/16x16/settings.png</file>
-        <file>icons/16x16/typing.png</file>
-    </qresource>
+  <qresource prefix="/">
+    <file alias="stop">icons/16x16/stop_14025722.png</file>
+    <file alias="folder">icons/16x16/open-folder_12075832.png</file>
+    <file alias="upload">icons/16x16/arrow_14035672.png</file>
+    <file alias="download">icons/16x16/arrows_14035593.png</file>
+    <file alias="pause">icons/16x16/circle_14025535.png</file>
+    <file alias="delete">icons/16x16/delete_14025328.png</file>
+    <file alias="start">icons/16x16/play_14024915.png</file>
+    <file alias="restart">icons/16x16/power_14025449.png</file>
+    <file>icons/16x16/file.png</file>
+    <file>icons/16x16/ledgreen.png</file>
+    <file>icons/16x16/ledred.png</file>
+    <file>icons/16x16/licq.png</file>
+    <file>icons/16x16/message.png</file>
+    <file>icons/16x16/settings.png</file>
+    <file>icons/16x16/typing.png</file>
+  </qresource>
 </RCC>

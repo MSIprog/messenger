@@ -18,7 +18,7 @@ public:
     MessageForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidget *a_parent = nullptr);
     ~MessageForm();
 
-    void addDialog(const QString &a_id, const QString &a_name);
+    void addDialog(const QString &a_id);
     bool hasUnreadMessages();
     bool hasUnreadMessages(const QString &a_id);
 
