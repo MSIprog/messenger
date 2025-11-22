@@ -5,7 +5,7 @@
 class ResourceHolder
 {
 public:
-    static const ResourceHolder& get();
+    static const ResourceHolder &get();
 
     const QIcon &getApplicationIcon() const
     {
@@ -37,6 +37,26 @@ public:
         return m_fileIcon;
     }
 
+    const QIcon &getSendIcon() const
+    {
+        return m_sendIcon;
+    }
+
+    const QIcon &getReceiveIcon() const
+    {
+        return m_receiveIcon;
+    }
+
+    const QIcon &getPauseIcon() const
+    {
+        return m_pauseIcon;
+    }
+
+    const QIcon &getErrorIcon() const
+    {
+        return m_errorIcon;
+    }
+
 private:
     ResourceHolder();
 
@@ -46,4 +66,8 @@ private:
     QIcon m_messageIcon;
     QIcon m_typingIcon;
     QIcon m_fileIcon;
+    QIcon m_sendIcon;
+    QIcon m_receiveIcon;
+    QIcon m_pauseIcon;
+    QIcon m_errorIcon;
 };

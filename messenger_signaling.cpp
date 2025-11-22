@@ -1,27 +1,6 @@
 ﻿#include <QUuid>
 #include "messenger_signaling.h"
 
-#define ATTRIBUTE(type,name) \
-   type get_##name() const { return m_container[#name].value<type>(); }\
-   void set_##name(const type &a_value) { m_container[#name] = a_value; }
-
-struct AttributeContainer
-{
-    AttributeContainer() {}
-
-    explicit AttributeContainer(const QVariant &a_value)
-    {
-        m_container = a_value.toMap();
-    }
-
-    QVariant toQVariant() const
-    {
-        return m_container;
-    }
-
-    QMap<QString, QVariant> m_container;
-};
-
 //-------------------------------------------------------------------------------------------------
 struct UserInfoSignal : AttributeContainer
 {
@@ -76,60 +55,6 @@ struct TypingSignal : AttributeContainer
 };
 
 //-------------------------------------------------------------------------------------------------
-struct FileInfoSignal : AttributeContainer
-{
-    ATTRIBUTE(QString, sender);
-    ATTRIBUTE(QString, name);
-    ATTRIBUTE(QDateTime, modification_date);
-    ATTRIBUTE(size_t, size);
-
-    FileInfoSignal(const QString &a_sender, const QString &a_name, const QDateTime &a_modificationDate, size_t a_size)
-    {
-        set_sender(a_sender);
-        set_name(a_name);
-        set_modification_date(a_modificationDate);
-        set_size(a_size);
-    }
-
-    explicit FileInfoSignal(const QVariant &a_value) : AttributeContainer(a_value) {}
-
-    static constexpr char g_signalName[]{ "FileInfo" };
-};
-
-//-------------------------------------------------------------------------------------------------
-struct FileContentsSignal : AttributeContainer
-{
-    ATTRIBUTE(QString, sender);
-    ATTRIBUTE(QString, name);
-    ATTRIBUTE(size_t, offset);
-    ATTRIBUTE(size_t, size);
-    ATTRIBUTE(QByteArray, contents);
-
-    // для отправки фрагмента
-    FileContentsSignal(const QString &a_sender, const QString &a_name, size_t a_offset, const QByteArray &a_contents)
-    {
-        set_sender(a_sender);
-        set_name(a_name);
-        set_offset(a_offset);
-        set_size(a_contents.size());
-        set_contents(a_contents);
-    }
-
-    // для запроса на фрагмент
-    FileContentsSignal(const QString &a_sender, const QString &a_name, size_t a_offset, size_t a_size)
-    {
-        set_sender(a_sender);
-        set_name(a_name);
-        set_offset(a_offset);
-        set_size(a_size);
-    }
-
-    explicit FileContentsSignal(const QVariant &a_value) : AttributeContainer(a_value) {}
-
-    static constexpr char g_signalName[]{ "FileContents" };
-};
-
-//-------------------------------------------------------------------------------------------------
 MessengerSignaling::MessengerSignaling(std::shared_ptr<Signaling> a_signaling)
 {
     m_signaling = a_signaling;
@@ -149,13 +74,9 @@ void MessengerSignaling::setId(const QString &a_id)
 {
     m_signaling->unsubscribe(getSignalName(MessageSignal::g_signalName, m_id));
     m_signaling->unsubscribe(getSignalName(TypingSignal::g_signalName, m_id));
-    m_signaling->unsubscribe(getSignalName(FileInfoSignal::g_signalName, m_id));
-    m_signaling->unsubscribe(getSignalName(FileContentsSignal::g_signalName, m_id));
     m_id = a_id;
     m_signaling->subscribe(getSignalName(MessageSignal::g_signalName, m_id));
     m_signaling->subscribe(getSignalName(TypingSignal::g_signalName, m_id));
-    m_signaling->subscribe(getSignalName(FileInfoSignal::g_signalName, m_id));
-    m_signaling->subscribe(getSignalName(FileContentsSignal::g_signalName, m_id));
     m_sendTimer.start(1000);
 }
 
@@ -209,26 +130,9 @@ bool MessengerSignaling::isTyping(const QString &a_sender)
     return m_typing[a_sender];
 }
 
-// todo: template sendSignal
-
 void MessengerSignaling::sendTyping(const QString &a_receiver, bool a_typing)
 {
     m_signaling->sendSignal(getSignalName(TypingSignal::g_signalName, a_receiver), TypingSignal(m_id, a_typing).toQVariant());
-}
-
-void MessengerSignaling::sendFileInfo(const QString &a_receiver, QString a_name, QDateTime a_modificationDate, size_t a_size)
-{
-    m_signaling->sendSignal(getSignalName(FileInfoSignal::g_signalName, a_receiver), FileInfoSignal(m_id, a_name, a_modificationDate, a_size).toQVariant());
-}
-
-void MessengerSignaling::requestFileContents(const QString &a_receiver, QString a_name, size_t a_offset, size_t a_size)
-{
-    m_signaling->sendSignal(getSignalName(FileContentsSignal::g_signalName, a_receiver), FileContentsSignal(m_id, a_name, a_offset, a_size).toQVariant());
-}
-
-void MessengerSignaling::sendFileContents(const QString &a_receiver, QString a_name, size_t a_offset, const QByteArray &a_contents)
-{
-    m_signaling->sendSignal(getSignalName(FileContentsSignal::g_signalName, a_receiver), FileContentsSignal(m_id, a_name, a_offset, a_contents).toQVariant());
 }
 
 // private slots:
@@ -241,9 +145,7 @@ void MessengerSignaling::onSignalReceived(QString a_signal, QVariant a_value)
 {
     tryHandleSignal<UserInfoSignal>(a_signal, a_value) ||
         tryHandleSignal<MessageSignal>(a_signal, a_value) ||
-        tryHandleSignal<TypingSignal>(a_signal, a_value) ||
-        tryHandleSignal<FileInfoSignal>(a_signal, a_value) ||
-        tryHandleSignal<FileContentsSignal>(a_signal, a_value);
+        tryHandleSignal<TypingSignal>(a_signal, a_value);
 }
 
 void MessengerSignaling::autoKickUser()
@@ -282,7 +184,11 @@ template<> void MessengerSignaling::handleSignal(const UserInfoSignal &a_data)
 {
     auto id = a_data.get_id();
     if (id == m_id)
-        setId(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    {
+        auto thisId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        setId(thisId);
+        emit idChanged(thisId);
+    }
 
     if (!a_data.get_online())
     {
@@ -294,6 +200,9 @@ template<> void MessengerSignaling::handleSignal(const UserInfoSignal &a_data)
     if (it != m_users.end())
     {
         it->second.m_refresh_time = QDateTime::currentDateTime();
+        auto name = a_data.get_name();
+        if (it->second.m_name != name)
+            emit userRenamed(id, name);
         return;
     }
     UserInfo user;
@@ -314,14 +223,4 @@ template<> void MessengerSignaling::handleSignal(const TypingSignal &a_data)
 {
     m_typing[a_data.get_sender()] = a_data.get_typing();
     emit typing(a_data.get_sender(), a_data.get_typing());
-}
-
-template<> void MessengerSignaling::handleSignal(const FileInfoSignal &a_data)
-{
-    emit fileInfoReceived(a_data.get_sender(), a_data.get_name(), a_data.get_modification_date(), a_data.get_size());
-}
-
-template<> void MessengerSignaling::handleSignal(const FileContentsSignal &a_data)
-{
-    emit fileContentsReceived(a_data.get_sender(), a_data.get_name(), a_data.get_offset(), a_data.get_size(), a_data.get_contents());
 }

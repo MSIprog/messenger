@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include <any>
 #include <QObject>
 #include <QTimer>
 #include <QDateTime>
@@ -25,6 +24,27 @@ struct Message
     QString m_text;
 };
 
+#define ATTRIBUTE(type,name) \
+   type get_##name() const { return m_container[#name].value<type>(); }\
+   void set_##name(const type &a_value) { m_container[#name] = a_value; }
+
+struct AttributeContainer
+{
+    AttributeContainer() {}
+
+    explicit AttributeContainer(const QVariant &a_value)
+    {
+        m_container = a_value.toMap();
+    }
+
+    QVariant toQVariant() const
+    {
+        return m_container;
+    }
+
+    QMap<QString, QVariant> m_container;
+};
+
 class MessengerSignaling : public QObject
 {
     Q_OBJECT
@@ -35,7 +55,7 @@ public:
     QString getId() const;
     void setId(const QString &a_id);
     QString getName() const;
-    void setName(const QString& a_name);
+    void setName(const QString &a_name);
     void setOnline(bool a_online);
     bool userIsOnline(const QString &a_id);
     QString getUserName(const QString &a_id);
@@ -43,17 +63,14 @@ public:
     void sendMessage(const QString &a_receiver, const QString &a_text);
     bool isTyping(const QString &a_receiver);
     void sendTyping(const QString &a_receiver, bool a_typing);
-    void sendFileInfo(const QString &a_receiver, QString a_name, QDateTime a_modificationDate, size_t a_size);
-    void requestFileContents(const QString &a_receiver, QString a_name, size_t a_offset, size_t a_size);
-    void sendFileContents(const QString &a_receiver, QString a_name, size_t a_offset, const QByteArray &a_contents);
 
 signals:
+    void idChanged(QString a_id);
     void userAdded(QString a_id, QString a_name);
+    void userRenamed(QString a_id, QString a_name);
     void userRemoved(QString a_id);
     void messageReceived(QString a_sender, QDateTime a_date, QString a_text);
     void typing(QString a_sender, bool a_typing);
-    void fileInfoReceived(QString a_sender, QString a_name, QDateTime a_modificationDate, size_t a_size);
-    void fileContentsReceived(QString a_sender, QString a_name, size_t a_offset, size_t a_size, QByteArray a_contents);
 
 private slots:
     void sendUserInfo();
@@ -61,7 +78,8 @@ private slots:
     void autoKickUser();
 
 private:
-    QString getSignalName(const QString &a_prefix, const QString &a_id);
+    static QString getSignalName(const QString &a_prefix, const QString &a_id);
+
     template<typename T> bool tryHandleSignal(const QString &a_signal, const QVariant &a_value);
     template<typename T> void handleSignal(const T &a_signal);
 

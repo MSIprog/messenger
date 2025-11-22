@@ -26,8 +26,9 @@ signals:
     void messagesRead(const QString &a_sender);
 
 private slots:
-    void onUserAdded(QString a_id, QString a_name);
-    void onUserRemoved(const QString &a_id);
+    void addUser(QString a_id, QString a_name);
+    void renameUser(QString a_id, QString a_name);
+    void removeUser(const QString &a_id);
     void showHistory(int a_tabIndex);
     void closeTab(int a_tabIndex);
     void sendText(const QString &a_text);

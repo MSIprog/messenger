@@ -13,7 +13,8 @@ SOURCES += main.cpp \
     resource_holder.cpp \
     signaling_facade.cpp \
     file_form.cpp \
-    settings.cpp
+    settings.cpp \
+    file_signaling.cpp
 HEADERS += user_list_widget.h \
     type_field.h \
     detection_server.h \
@@ -25,7 +26,8 @@ HEADERS += user_list_widget.h \
     resource_holder.h \
     signaling_facade.h \
     file_form.h \
-    settings.h
+    settings.h \
+    file_signaling.h
 FORMS += user_list_widget.ui \
     message_form.ui \
     file_form.ui

@@ -1,6 +1,6 @@
 #include "resource_holder.h"
 
-const ResourceHolder& ResourceHolder::get()
+const ResourceHolder &ResourceHolder::get()
 {
     static ResourceHolder instance;
     return instance;
@@ -14,4 +14,8 @@ ResourceHolder::ResourceHolder()
     m_messageIcon = QIcon(":/icons/16x16/message.png");
     m_typingIcon = QIcon(":/icons/16x16/typing.png");
     m_fileIcon = QIcon(":/icons/16x16/file.png");
+    m_sendIcon = QIcon(":upload");
+    m_receiveIcon = QIcon(":download");
+    m_pauseIcon = QIcon(":pause");
+    m_errorIcon = QIcon(":error");
 }

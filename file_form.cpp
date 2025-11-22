@@ -7,43 +7,19 @@
 #include "resource_holder.h"
 #include "settings.h"
 
-FileId FileId::fromString(const QString &a_id)
-{
-    auto index1 = a_id.lastIndexOf('/');
-    auto index2 = a_id.lastIndexOf('/', index1 - 1);
-    return FileId{ a_id.left(index2) == "S" ? FileActionType::Send : FileActionType::Receive,
-        a_id.mid(index2 + 1, index1 - index2 - 1), a_id.mid(index1 + 1)};
-}
-
-QString FileId::toString() const
-{
-    return QString("%1/%2/%3").arg(m_action == FileActionType::Send ? "S" : "R").arg(m_userId).arg(m_name);
-}
-
-bool FileId::operator==(const FileId &a_id) const
-{
-    return m_userId == a_id.m_userId && m_name == a_id.m_name && m_action == a_id.m_action;
-}
-
-bool FileId::operator<(const FileId &a_id) const
-{
-    if (m_action != a_id.m_action)
-        return m_action < a_id.m_action;
-    if (m_userId != a_id.m_userId)
-        return m_userId < a_id.m_userId;
-    return m_name < a_id.m_name;
-}
-
-FileForm::FileForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidget *a_parent) :
+FileForm::FileForm(std::shared_ptr<MessengerSignaling> a_signaling, std::shared_ptr<FileSignaling> a_fileSignaling, QWidget *a_parent) :
     QWidget(a_parent, Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMaximizeButtonHint | Qt::WindowCloseButtonHint),
     m_ui(new Ui::FileForm)
 {
     m_ui->setupUi(this);
     m_signaling = a_signaling;
-    connect(a_signaling.get(), &MessengerSignaling::fileInfoReceived, this, &FileForm::onFileInfoReceived);
-    connect(a_signaling.get(), &MessengerSignaling::fileContentsReceived, this, &FileForm::onFileContentsReceived);
+    connect(m_signaling.get(), &MessengerSignaling::userRenamed, this, &FileForm::renameUser);
+    m_fileSignaling = a_fileSignaling;
+    connect(m_fileSignaling.get(), &FileSignaling::fileAboutToReceive, this, &FileForm::onFileAboutToReceive);
+    connect(m_fileSignaling.get(), &FileSignaling::fileFragmentSent, this, &FileForm::onFileFragmentSent);
+    connect(m_fileSignaling.get(), &FileSignaling::fileFragmentReceived, this, &FileForm::onFileFragmentReceived);
     connect(m_ui->filesListWidget, &QListWidget::currentItemChanged, this, &FileForm::onFileListWidgetCurrentItemChanged);
-    connect(m_ui->setFolderToolButton, &QAbstractButton::clicked, this, &FileForm::onSetFolderToolButtonClicked);
+    connect(m_ui->setFolderToolButton, &QAbstractButton::clicked, this, &FileForm::onSetFileNameToolButtonClicked);
     connect(m_ui->startToolButton, &QAbstractButton::clicked, this, &FileForm::onStartToolButtonClicked);
     connect(m_ui->pauseToolButton, &QAbstractButton::clicked, this, &FileForm::onPauseToolButtonClicked);
     connect(m_ui->cancelToolButton, &QAbstractButton::clicked, this, &FileForm::onCancelToolButtonClicked);
@@ -71,25 +47,15 @@ FileForm::~FileForm()
 
 bool FileForm::sendFile(const QString &a_receiver, const QString &a_fileName)
 {
-    QFileInfo fileInfo(a_fileName);
-    if (!fileInfo.exists())
+    if (!m_fileSignaling->sendFile(a_receiver, a_fileName))
         return false;
-    auto name = fileInfo.fileName();
-    FileId fileId{ FileActionType::Send, a_receiver, name };
-    if (!getFileName(fileId).isNull())
-        return false; // файл с таким именем уже отправлен/отправляется
-    m_fileNames[fileId] = a_fileName;
-
     if (canAddItem(a_receiver))
     {
-        auto item = new QListWidgetItem(QIcon(":/upload"), getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
-        item->setData(Qt::UserRole, fileId.toString());
+        auto &fileId = m_fileSignaling->getFileId(a_fileName);
+        auto item = new QListWidgetItem(ResourceHolder::get().getSendIcon(), getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
+        item->setData(Qt::UserRole, fileIdToString(fileId));
         m_ui->filesListWidget->addItem(item);
     }
-
-    // идентификатор ресурса - короткое имя файла
-    // передача файлов с одинаковыми короткими именами, но разными полными именами невозможна
-    m_signaling->sendFileInfo(a_receiver, name, fileInfo.lastModified(), (size_t)fileInfo.size());
     return true;
 }
 
@@ -118,22 +84,21 @@ void FileForm::addUser(const QString &a_id)
     showFiles(m_ui->tabBar->count() - 1);
 }
 
-void FileForm::onFileInfoReceived(QString a_sender, QString a_name, QDateTime a_modificationDate, size_t a_size)
+void FileForm::renameUser(QString a_id, QString a_name)
 {
-    auto fileName = createReceivingFileName(a_sender, a_name);
-    if (getReceivingFileInfo(fileName).isValid())
-        return; // файл с таким именем уже принимается/принят
-    QDir().mkpath(QFileInfo(fileName).path());
+    auto index = getTabIndex(a_id);
+    if (index == -1)
+        return;
+    m_ui->tabBar->setTabText(index, a_name);
+}
 
-    m_receivingFiles[fileName] = FileInfo{ FileInfo::Status::Pending, a_modificationDate, a_size };
-
-    FileId fileId{ FileActionType::Receive, a_sender, a_name };
-    m_fileNames[fileId] = fileName;
-
+void FileForm::onFileAboutToReceive(QString a_sender, QString a_name)
+{
     if (canAddItem(a_sender))
     {
-        auto item = new QListWidgetItem(QIcon(":/download"), getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
-        item->setData(Qt::UserRole, fileId.toString());
+        FileId fileId{ FileActionType::Receive, a_sender, a_name };
+        auto item = new QListWidgetItem(ResourceHolder::get().getReceiveIcon(), getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
+        item->setData(Qt::UserRole, fileIdToString(fileId));
         m_ui->filesListWidget->addItem(item);
     }
     if (!canAddItem(a_sender) || !isVisible() || !(windowState() & Qt::WindowActive))
@@ -146,95 +111,24 @@ void FileForm::onFileInfoReceived(QString a_sender, QString a_name, QDateTime a_
     }
 }
 
-#include <QThread>
-
-void FileForm::onFileContentsReceived(QString a_sender, QString a_name, size_t a_offset, size_t a_size, QByteArray a_contents)
+void FileForm::onFileFragmentSent(QString a_sender, QString a_name, size_t a_offset, size_t a_size)
 {
     FileId fileId{ FileActionType::Send, a_sender, a_name };
-    auto fileName = getFileName(fileId);
-    if (!fileName.isNull())
-    {
-        // отправка
-        QFile file(fileName);
-        if (!file.open(QIODevice::ReadOnly))
-        {
-            // файл удален
-            m_signaling->sendFileContents(a_sender, a_name, a_offset, QByteArray());
-            return;
-        }
-        if (!file.seek(a_offset))
-        {
-            // неправильное смещение
-            m_signaling->sendFileContents(a_sender, a_name, a_offset, QByteArray());
-            return;
-        }
-        auto contents = file.read(a_size);
-        if (contents.size() != a_size)
-        {
-            // неправильный размер
-            m_signaling->sendFileContents(a_sender, a_name, a_offset, QByteArray());
-            return;
-        }
-        m_signaling->sendFileContents(a_sender, a_name, a_offset, contents);
-        m_offsets[fileId] = a_offset + a_size; // обновляем смещение для индикатора выполнения
-    }
-    else
-    {
-        // прием
-        fileId = FileId{ FileActionType::Receive, a_sender, a_name };
-        fileName = getFileName(fileId);
-        if (fileName.isNull())
-            return; // файл не запрашивался
-        auto &fileInfo = getReceivingFileInfo(fileName);
-        if (!fileInfo.isValid())
-            return;
-        if (fileInfo.m_status != FileInfo::Status::Started)
-            return; // пользователь отказался от приема файла
-        if (a_size == 0)
-        {
-            // отправитель вернул ошибку
-            fileInfo.m_status = FileInfo::Status::Error;
-            return;
-        }
-        auto &offset = m_offsets[fileId];
-        if (offset != a_offset)
-        {
-            // неправильное смещение
-            fileInfo.m_status = FileInfo::Status::Error;
-            return;
-        }
-        QFile file(fileName);
-        file.open(QIODevice::Append);
-        if (file.pos() != offset)
-        {
-            // неправильный размер локального файла
-            fileInfo.m_status = FileInfo::Status::Error;
-            return;
-        }
-        file.write(a_contents);
-        offset += a_contents.size();
-
-        QThread::msleep(200);
-
-        // запрашиваем следующий фрагмент
-        if (fileInfo.m_status == FileInfo::Status::Started)
-        {
-            auto nextFragmentSize = std::min(fileInfo.m_size - offset, m_maxFragmentSize);
-            if (nextFragmentSize != 0)
-                m_signaling->requestFileContents(a_sender, a_name, offset, nextFragmentSize);
-            else
-            {
-                // прием завершен
-                fileInfo.m_status = FileInfo::Status::Finished;
-
-                updateButtons();
-            }
-        }
-    }
-
+    m_offsets[fileId] = a_offset + a_size;
     auto item = getItem(fileId);
     if (item != nullptr)
         item->setText(getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
+}
+
+void FileForm::onFileFragmentReceived(QString a_sender, QString a_name, size_t a_offset, size_t a_size)
+{
+    FileId fileId{ FileActionType::Receive, a_sender, a_name };
+    m_offsets[fileId] = a_offset + a_size;
+    auto item = getItem(fileId);
+    if (item != nullptr)
+        item->setText(getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
+    if (m_fileSignaling->getReceivingFileInfo(m_fileSignaling->getFileName(fileId)).m_status == FileInfo::Status::Finished)
+        updateButtons();
 }
 
 void FileForm::onFileListWidgetCurrentItemChanged(QListWidgetItem *, QListWidgetItem *)
@@ -242,86 +136,59 @@ void FileForm::onFileListWidgetCurrentItemChanged(QListWidgetItem *, QListWidget
     updateButtons();
 }
 
-void FileForm::onSetFolderToolButtonClicked()
+void FileForm::onSetFileNameToolButtonClicked()
 {
-    auto id = getCurrentFileId();
-    if (id == FileId())
+    auto fileld = getCurrentFileId();
+    if (fileld == FileId())
         return;
-    auto fileName = getFileName(id);
+    auto fileName = m_fileSignaling->getFileName(fileld);
     if (fileName.isNull())
         return;
     auto newFileName = QFileDialog::getSaveFileName(this);
     if (newFileName.isNull())
         return;
-    // это работает только с файлами в ожидании (если ни одного фрагмента не было получено)
-    m_fileNames.erase(id);
-    m_fileNames[id] = newFileName;
-    auto fileInfo = m_receivingFiles[fileName];
-    m_receivingFiles.erase(fileName);
-    m_receivingFiles[newFileName] = fileInfo;
+    m_fileSignaling->renameFileName(fileName, newFileName);
 }
 
 void FileForm::onStartToolButtonClicked()
 {
-    auto id = getCurrentFileId();
-    if (id == FileId())
+    auto fileId = getCurrentFileId();
+    if (fileId == FileId())
         return;
-    auto fileName = getFileName(id);
-    auto &fileInfo = getReceivingFileInfo(fileName);
-    if (!fileInfo.isValid())
-        return;
-    // перед началом приема файла удалим существующий файл
-    if (fileInfo.m_status == FileInfo::Status::Pending &&
-        QFileInfo(fileName).exists() &&
-        !QFile::remove(fileName))
-        return;
-    fileInfo.m_status = FileInfo::Status::Started;
-
+    m_fileSignaling->receiveFile(fileId.m_userId, fileId.m_name);
     updateButtons();
-
-    m_signaling->requestFileContents(id.m_userId, id.m_name, m_offsets[id], fileInfo.m_size > m_maxFragmentSize ? m_maxFragmentSize : fileInfo.m_size);
 }
 
 void FileForm::onPauseToolButtonClicked()
 {
-    auto &fileInfo = getCurrentReceivingFileInfo();
-    if (!fileInfo.isValid())
+    auto fileId = getCurrentFileId();
+    if (fileId == FileId())
         return;
-    fileInfo.m_status = FileInfo::Status::Paused;
-
+    m_fileSignaling->pauseReceivingFile(fileId.m_userId, fileId.m_name);
     updateButtons();
 }
 
 void FileForm::onCancelToolButtonClicked()
 {
-    auto id = getCurrentFileId();
-    auto fileName = getFileName(id);
-    auto &fileInfo = getReceivingFileInfo(fileName);
-    if (!fileInfo.isValid())
+    auto fileId = getCurrentFileId();
+    if (fileId == FileId())
         return;
-    QFile::remove(fileName);
-    m_offsets.erase(id);
-    fileInfo.m_status = FileInfo::Status::Pending;
-
+    m_fileSignaling->cancelReceivingFile(fileId.m_userId, fileId.m_name);
+    m_offsets.erase(fileId);
     updateButtons();
-    m_ui->filesListWidget->currentItem()->setText(getItemText(id, m_ui->tabBar->currentIndex() != 0));
+    m_ui->filesListWidget->currentItem()->setText(getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
 }
 
 void FileForm::onRestartToolButtonClicked()
 {
-    auto id = getCurrentFileId();
-    auto fileName = getFileName(id);
-    auto &fileInfo = getReceivingFileInfo(fileName);
-    if (!fileInfo.isValid())
+    auto fileId = getCurrentFileId();
+    if (fileId == FileId())
         return;
-    QFile::remove(fileName);
-    m_offsets[id] = 0;
-    fileInfo.m_status = FileInfo::Status::Started;
-
+    m_fileSignaling->cancelReceivingFile(fileId.m_userId, fileId.m_name);
+    m_offsets.erase(fileId);
+    m_fileSignaling->receiveFile(fileId.m_userId, fileId.m_name);
     updateButtons();
-    m_ui->filesListWidget->currentItem()->setText(getItemText(id, m_ui->tabBar->currentIndex() != 0));
-
-    m_signaling->requestFileContents(id.m_userId, id.m_name, m_offsets[id], fileInfo.m_size > m_maxFragmentSize ? m_maxFragmentSize : fileInfo.m_size);
+    m_ui->filesListWidget->currentItem()->setText(getItemText(fileId, m_ui->tabBar->currentIndex() != 0));
 }
 
 void FileForm::onOpenFolderToolButtonClicked()
@@ -336,17 +203,11 @@ void FileForm::onOpenFolderToolButtonClicked()
 
 void FileForm::onRemoveToolButtonClicked()
 {
-    auto id = getCurrentFileId();
-    if (id == FileId())
+    auto fileId = getCurrentFileId();
+    if (fileId == FileId())
         return;
-    m_fileNames.erase(id);
-    if (id.m_action == FileActionType::Receive)
-    {
-        auto fileName = getFileName(id);
-        QFile::remove(fileName);
-        m_receivingFiles.erase(fileName);
-    }
-
+    m_offsets.erase(fileId);
+    m_fileSignaling->removeFile(fileId.m_userId, fileId.m_name);
     delete m_ui->filesListWidget->takeItem(m_ui->filesListWidget->currentRow());
     updateButtons();
 }
@@ -357,13 +218,12 @@ void FileForm::showFiles(int a_tabIndex)
     if (a_tabIndex == -1)
         return;
     auto userId = getUserId(a_tabIndex);
-    for (auto &fileId : m_fileNames)
+    for (auto fileName : m_fileSignaling->getFileNames(userId))
     {
-        if (a_tabIndex != 0 && fileId.first.m_userId != userId)
-            continue;
-        auto icon = fileId.first.m_action == FileActionType::Receive ? QIcon(":/download") : QIcon(":/upload");
-        auto item = new QListWidgetItem(icon, getItemText(fileId.first, a_tabIndex != 0));
-        item->setData(Qt::UserRole, fileId.first.toString());
+        auto fileId = m_fileSignaling->getFileId(fileName);
+        auto &icon = fileId.m_action == FileActionType::Receive ? ResourceHolder::get().getReceiveIcon() : ResourceHolder::get().getSendIcon();
+        auto item = new QListWidgetItem(icon, getItemText(fileId, a_tabIndex != 0));
+        item->setData(Qt::UserRole, fileIdToString(fileId));
         m_ui->filesListWidget->addItem(item);
    }
     eraseCurrentPendingSender();
@@ -386,8 +246,8 @@ void FileForm::changeIcons()
     for (int i = 0; i < m_ui->filesListWidget->count(); i++)
     {
         auto item = m_ui->filesListWidget->item(i);
-        auto id = FileId::fromString(item->data(Qt::UserRole).toString());
-        auto &fileInfo = getReceivingFileInfo(getFileName(id));
+        auto fileId = fileIdFromString(item->data(Qt::UserRole).toString());
+        auto &fileInfo = m_fileSignaling->getReceivingFileInfo(m_fileSignaling->getFileName(fileId));
         auto status = FileInfo::Status::Unknown;
         if (fileInfo.isValid())
             status = fileInfo.m_status;
@@ -395,19 +255,14 @@ void FileForm::changeIcons()
         if (m_blinkState && status == FileInfo::Status::Pending)
             icon = ResourceHolder::get().getFileIcon();
         else if (m_blinkState && status == FileInfo::Status::Paused)
-            icon = QIcon(":pause");
+            icon = ResourceHolder::get().getPauseIcon();
         else if (m_blinkState && status == FileInfo::Status::Error)
-            icon = QIcon(":error");
+            icon = ResourceHolder::get().getErrorIcon();
         else
-            icon = id.m_action == FileActionType::Send ? QIcon(":upload") : QIcon(":download");
+            icon = fileId.m_action == FileActionType::Receive ? ResourceHolder::get().getReceiveIcon() : ResourceHolder::get().getSendIcon();
         item->setIcon(icon);
     }
     m_blinkState = !m_blinkState;
-}
-
-QString FileForm::createReceivingFileName(const QString &a_user, const QString &a_name)
-{
-    return QString("%1/files/%2/%3").arg(QDir::currentPath()).arg(a_user).arg(a_name);
 }
 
 // получить строку, содержащую размер, переведенный в КБ, МБ или ГБ, например: 2.07 MB
@@ -447,6 +302,20 @@ std::pair<QString, QString> FileForm::getShortFileSize(size_t a_size)
     return std::make_pair(value, units);
 }
 
+FileId FileForm::fileIdFromString(const QString &a_id)
+{
+    auto index1 = a_id.lastIndexOf('/');
+    auto index2 = a_id.lastIndexOf('/', index1 - 1);
+    return FileId{ a_id.left(index2) == "S" ? FileActionType::Send : FileActionType::Receive,
+        a_id.mid(index2 + 1, index1 - index2 - 1), a_id.mid(index1 + 1) };
+}
+
+// m_action/m_userId/m_name
+QString FileForm::fileIdToString(const FileId &a_id)
+{
+    return QString("%1/%2/%3").arg(a_id.m_action == FileActionType::Send ? "S" : "R").arg(a_id.m_userId).arg(a_id.m_name);
+}
+
 void FileForm::changeEvent(QEvent *a_event)
 {
     QWidget::changeEvent(a_event);
@@ -462,60 +331,22 @@ void FileForm::changeEvent(QEvent *a_event)
     }
 }
 
-QString FileForm::getFileName(const FileId &a_fileId) const
-{
-    auto it = m_fileNames.find(a_fileId);
-    if (it == m_fileNames.end())
-        return QString();
-    return it->second;
-}
-
-const FileId &FileForm::getFileId(const QString &a_fileName) const
-{
-    auto it = std::find_if(m_fileNames.begin(), m_fileNames.end(), [&a_fileName](auto& a_fileInfo)
-        {
-            return a_fileInfo.second == a_fileName;
-        });
-    if (it == m_fileNames.end())
-    {
-        static FileId nullId;
-        return nullId;
-    }
-    return it->first;
-}
-
-const FileInfo &FileForm::getReceivingFileInfo(const QString &a_fileName) const
-{
-    return const_cast<FileForm &>(*this).getReceivingFileInfo(a_fileName);
-}
-
-FileInfo &FileForm::getReceivingFileInfo(const QString &a_fileName)
-{
-    auto it = m_receivingFiles.find(a_fileName);
-    if (it == m_receivingFiles.end())
-    {
-        static FileInfo nullInfo;
-        return nullInfo;
-    }
-    return it->second;
-}
-
 FileId FileForm::getCurrentFileId()
 {
     auto item = m_ui->filesListWidget->currentItem();
     if (item == nullptr)
         return {};
-    return FileId::fromString(item->data(Qt::UserRole).toString());
+    return fileIdFromString(item->data(Qt::UserRole).toString());
 }
 
 QString FileForm::getCurrentFileName()
 {
-    return getFileName(getCurrentFileId());
+    return m_fileSignaling->getFileName(getCurrentFileId());
 }
 
-FileInfo &FileForm::getCurrentReceivingFileInfo()
+const FileInfo &FileForm::getCurrentReceivingFileInfo()
 {
-    return getReceivingFileInfo(getCurrentFileName());
+    return m_fileSignaling->getReceivingFileInfo(getCurrentFileName());
 }
 
 QListWidgetItem *FileForm::getItem(const FileId &a_fileId)
@@ -523,8 +354,8 @@ QListWidgetItem *FileForm::getItem(const FileId &a_fileId)
     for (int i = 0; i < m_ui->filesListWidget->count(); i++)
     {
         auto item = m_ui->filesListWidget->item(i);
-        auto id = FileId::fromString(item->data(Qt::UserRole).toString());
-        if (id == a_fileId)
+        auto fileId = fileIdFromString(item->data(Qt::UserRole).toString());
+        if (fileId == a_fileId)
             return item;
     }
     return nullptr;
@@ -532,32 +363,37 @@ QListWidgetItem *FileForm::getItem(const FileId &a_fileId)
 
 QString FileForm::getItemText(const FileId &a_fileId, bool a_printUserName)
 {
-    auto fileName = getFileName(a_fileId);
-    QString userName = m_signaling->getUserName(a_fileId.m_userId);
+    QString result;
+    auto userName = m_signaling->getUserName(a_fileId.m_userId);
+    if (a_printUserName)
+        result = QString("%1: ").arg(userName);
     size_t size = 0;
-    auto &fileInfo = getReceivingFileInfo(fileName);
+    auto fileName = m_fileSignaling->getFileName(a_fileId);
+    auto &fileInfo = m_fileSignaling->getReceivingFileInfo(fileName);
     if (fileInfo.isValid())
-    {
         size = fileInfo.m_size;
-        auto sizeAndUnits = getShortFileSize(size);
-        if (fileInfo.m_status != FileInfo::Status::Started && fileInfo.m_status != FileInfo::Status::Paused)
-        {
-            if (a_printUserName)
-                return QString("%1: %2 (%3 %4)").arg(userName).arg(a_fileId.m_name).arg(sizeAndUnits.first).arg(sizeAndUnits.second);
-            return QString("%1 (%2 %3)").arg(a_fileId.m_name).arg(sizeAndUnits.first).arg(sizeAndUnits.second);
-        }
-    }
     else
         size = (size_t)QFileInfo(fileName).size();
+    auto sizeAndUnits = getShortFileSize(size);
+    if (m_offsets.find(a_fileId) == m_offsets.end())
+    {
+        result += QString("%1 (%2 %3)")
+            .arg(a_fileId.m_name)
+            .arg(sizeAndUnits.first)
+            .arg(sizeAndUnits.second);
+        return result;
+    }
     auto offset = m_offsets[a_fileId];
     auto percents = (int)(((double)offset / size) * 100);
     auto offsetAndUnits = getShortFileSize(offset);
-    auto sizeAndUnits = getShortFileSize(size);
-    if (a_printUserName)
-        return QString("%1: %2 (%3 %4 of %5 %6, %7 %)").arg(userName).arg(a_fileId.m_name)
-            .arg(offsetAndUnits.first).arg(offsetAndUnits.second).arg(sizeAndUnits.first).arg(sizeAndUnits.second).arg(percents);
-    return QString("%1 (%2 %3 of %4 %5, %6 %)").arg(a_fileId.m_name)
-        .arg(offsetAndUnits.first).arg(offsetAndUnits.second).arg(sizeAndUnits.first).arg(sizeAndUnits.second).arg(percents);
+    result += QString("%1 (%2 %3 / %4 %5, %6 %)")
+        .arg(a_fileId.m_name)
+        .arg(offsetAndUnits.first)
+        .arg(offsetAndUnits.second)
+        .arg(sizeAndUnits.first)
+        .arg(sizeAndUnits.second)
+        .arg(percents);
+    return result;
 }
 
 void FileForm::updateButtons()

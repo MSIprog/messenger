@@ -7,13 +7,16 @@
 #include "resource_holder.h"
 #include "settings.h"
 
-UserListWidget::UserListWidget(std::shared_ptr<MessengerSignaling> a_signaling, QWidget *a_parent) :
+UserListWidget::UserListWidget(std::shared_ptr<MessengerSignaling> a_signaling, std::shared_ptr<FileSignaling> a_fileSignaling, QWidget *a_parent) :
     QWidget(a_parent, Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinimizeButtonHint | Qt::WindowCloseButtonHint),
     m_ui(new Ui::UserListWidget)
 {
     m_ui->setupUi(this);
     m_signaling = a_signaling;
+    m_fileSignaling = a_fileSignaling;
+    connect(m_signaling.get(), &MessengerSignaling::idChanged, this, &UserListWidget::changeId);
     connect(m_signaling.get(), &MessengerSignaling::userAdded, this, &UserListWidget::addUser);
+    connect(m_signaling.get(), &MessengerSignaling::userRenamed, this, &UserListWidget::renameUser);
     connect(m_signaling.get(), &MessengerSignaling::userRemoved, this, &UserListWidget::removeUser);
     QTimer::singleShot(0, this, &UserListWidget::logon);
     m_states = new QMenu(this);
@@ -29,7 +32,7 @@ UserListWidget::UserListWidget(std::shared_ptr<MessengerSignaling> a_signaling, 
     m_blinkTimer.start(500);
 
     m_messageForm = new MessageForm(m_signaling, this);
-    m_fileForm = new FileForm(a_signaling, this);
+    m_fileForm = new FileForm(m_signaling, m_fileSignaling, this);
 
     //m_fileForm->show();
 
@@ -56,7 +59,9 @@ void UserListWidget::logon()
     auto uid = Settings::get().value("UserUuid").toUuid();
     if (uid.isNull())
         uid = QUuid::createUuid();
-    m_signaling->setId(uid.toString(QUuid::WithoutBraces));
+    auto id = uid.toString(QUuid::WithoutBraces);
+    m_signaling->setId(id);
+    m_fileSignaling->setId(id);
     // todo: проверить уникальность имени
     m_signaling->setName(name);
     m_ui->nameLabel->setText(name);
@@ -85,7 +90,7 @@ void UserListWidget::showDialog(QListWidgetItem *a_item)
     if (m_messageForm == nullptr)
         m_messageForm = new MessageForm(m_signaling, this);
     if (m_fileForm == nullptr)
-        m_fileForm = new FileForm(m_signaling, this);
+        m_fileForm = new FileForm(m_signaling, m_fileSignaling, this);
 
     auto id = a_item->data(Qt::UserRole).toString();
     if (m_messageForm->hasUnreadMessages(id) || !m_fileForm->hasPendingFiles(id))
@@ -123,7 +128,7 @@ void UserListWidget::sendMessage()
 void UserListWidget::sendFile()
 {
     if (m_fileForm == nullptr)
-        m_fileForm = new FileForm(m_signaling, this);
+        m_fileForm = new FileForm(m_signaling, m_fileSignaling, this);
     m_fileForm->show();
     auto item = m_ui->listWidget->currentItem();
     if (item == nullptr)
@@ -161,11 +166,25 @@ void UserListWidget::changeIcons()
     m_blinkState = !m_blinkState;
 }
 
+void UserListWidget::changeId(QString a_id)
+{
+    // MessengerSignaling автоматически изменил идентификатор
+    m_fileSignaling->setId(a_id);
+}
+
 void UserListWidget::addUser(QString a_id, QString a_name)
 {
     auto item = new QListWidgetItem(ResourceHolder::get().getApplicationIcon(), a_name);
     item->setData(Qt::UserRole, a_id);
     m_ui->listWidget->addItem(item);
+}
+
+void UserListWidget::renameUser(QString a_id, QString a_name)
+{
+    auto index = getUserIndex(a_id);
+    if (index == -1)
+        return;
+    m_ui->listWidget->item(index)->setText(a_name);
 }
 
 void UserListWidget::removeUser(QString a_id)

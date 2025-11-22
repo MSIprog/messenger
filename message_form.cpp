@@ -11,9 +11,10 @@ MessageForm::MessageForm(std::shared_ptr<MessengerSignaling> a_signaling, QWidge
 {
     m_ui->setupUi(this);
     m_signaling = a_signaling;
-    connect(a_signaling.get(), &MessengerSignaling::messageReceived, this, &MessageForm::onMessageReceived);
-    connect(m_signaling.get(), &MessengerSignaling::userAdded, this, &MessageForm::onUserAdded);
-    connect(m_signaling.get(), &MessengerSignaling::userRemoved, this, &MessageForm::onUserRemoved);
+    connect(m_signaling.get(), &MessengerSignaling::messageReceived, this, &MessageForm::onMessageReceived);
+    connect(m_signaling.get(), &MessengerSignaling::userAdded, this, &MessageForm::addUser);
+    connect(m_signaling.get(), &MessengerSignaling::userRenamed, this, &MessageForm::renameUser);
+    connect(m_signaling.get(), &MessengerSignaling::userRemoved, this, &MessageForm::removeUser);
     connect(m_ui->typeField, &TypeField::textEntered, this, &MessageForm::sendText);
     connect(m_ui->typeField, &TypeField::typing, this, &MessageForm::sendTyping);
     m_ui->tabBar->setExpanding(false);
@@ -79,7 +80,7 @@ bool MessageForm::hasUnreadMessages(const QString &a_id)
     return m_unreadSenders.find(a_id) != m_unreadSenders.end();
 }
 
-void MessageForm::onUserAdded(QString a_id, QString)
+void MessageForm::addUser(QString a_id, QString)
 {
     int tabIndex = getTabIndex(a_id);
     if (tabIndex == -1)
@@ -87,7 +88,15 @@ void MessageForm::onUserAdded(QString a_id, QString)
     m_ui->tabBar->setTabIcon(getTabIndex(a_id), ResourceHolder::get().getGreenIcon());
 }
 
-void MessageForm::onUserRemoved(const QString &a_id)
+void MessageForm::renameUser(QString a_id, QString a_name)
+{
+    auto index = getTabIndex(a_id);
+    if (index == -1)
+        return;
+    m_ui->tabBar->setTabText(index, a_name);
+}
+
+void MessageForm::removeUser(const QString &a_id)
 {
     int tabIndex = getTabIndex(a_id);
     if (tabIndex == -1)
@@ -185,7 +194,7 @@ void MessageForm::receiveHistory(const QString &a_id)
         messages.append(formatMessage(message.m_sentToSender, message.m_sentToSender ? m_signaling->getUserName(a_id) : m_signaling->getName(), message.m_date, message.m_text));
 }
 
-void MessageForm::appendHTML(const QString& a_text)
+void MessageForm::appendHTML(const QString &a_text)
 {
     QTextCursor cursor = m_ui->dialogField->textCursor();
     cursor.movePosition(QTextCursor::End);
