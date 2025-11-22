@@ -14,17 +14,22 @@ void TypeField::onTypingTimerTimeout()
 
 void TypeField::keyPressEvent(QKeyEvent *a_event)
 {
-    QTextEdit::keyPressEvent(a_event);
     m_typingTimer.start(500);
     if (!m_typing)
     {
         m_typing = true;
         emit typing(true);
     }
-    if ((a_event->key() == Qt::Key_Return || a_event->key() == Qt::Key_Enter) && !(a_event->modifiers() & Qt::ControlModifier))
+    if (a_event->key() == Qt::Key_Return || a_event->key() == Qt::Key_Enter)
     {
-        emit textEntered(toPlainText());
-        textCursor().setPosition(0);
-        setPlainText(QString());
+        if (a_event->modifiers() & Qt::ControlModifier)
+            a_event->setModifiers(Qt::NoModifier);
+        else
+        {
+            emit textEntered(toPlainText());
+            clear();
+            return;
+        }
     }
+    QTextEdit::keyPressEvent(a_event);
 }

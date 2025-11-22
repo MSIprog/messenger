@@ -109,7 +109,10 @@ void MessageForm::showHistory(int a_tabIndex)
     if (a_tabIndex == -1)
         return;
     auto id = getUserId(a_tabIndex);
+    if (!m_history.contains(id))
+        return;
     m_ui->dialogField->setHtml(m_history[id]);
+    m_ui->dialogField->moveCursor(QTextCursor::End);
     onMessagesRead(id);
 }
 
@@ -136,10 +139,10 @@ void MessageForm::sendTyping(bool a_typing)
 
 void MessageForm::onMessageReceived(QString a_sender, QDateTime a_date, QString a_text)
 {
-    auto formattedMessage = formatMessage(true, m_signaling->getUserName(a_sender), a_date, a_text);
-    m_history[a_sender] += formattedMessage;
+    auto message = formatMessage(true, m_signaling->getUserName(a_sender), a_date, a_text);
+    m_history[a_sender] += message;
     if (getCurrentUserId() == a_sender)
-        appendHTML(formattedMessage);
+        appendHTML(message);
     if (!isVisible() || getCurrentUserId() != a_sender || !(windowState() & Qt::WindowActive))
         m_unreadSenders.insert(a_sender);
     else
@@ -199,12 +202,12 @@ void MessageForm::appendHTML(const QString &a_text)
     QTextCursor cursor = m_ui->dialogField->textCursor();
     cursor.movePosition(QTextCursor::End);
     cursor.insertHtml(a_text);
-    auto bar = m_ui->dialogField->verticalScrollBar();
-    bar->setValue(bar->maximum());
+    m_ui->dialogField->moveCursor(QTextCursor::End);
 }
 
-QString MessageForm::formatMessage(bool a_sentToSender, const QString &a_name, const QDateTime &a_date, const QString &a_text)
+QString MessageForm::formatMessage(bool a_sentToSender, const QString &a_name, const QDateTime &a_date, QString a_text)
 {
+    a_text.replace("\n", "<br>");
     return QString("<font color=%1><b>%2</b></font> <font color=gray>(%3)</font><br>%4<br><br>")
         .arg(a_sentToSender ? "red" : "blue")
         .arg(a_name)

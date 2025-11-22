@@ -41,7 +41,7 @@ private:
     void onMessagesRead(const QString &a_sender);
     void receiveHistory(const QString &a_id);
     void appendHTML(const QString &a_text);
-    static QString formatMessage(bool a_sentToSender, const QString &a_name, const QDateTime &date, const QString &a_text);
+    static QString formatMessage(bool a_sentToSender, const QString &a_name, const QDateTime &date, QString a_text);
     int getTabIndex(const QString &a_id);
     QString getUserId(int a_tabIndex);
     QString getCurrentUserId();

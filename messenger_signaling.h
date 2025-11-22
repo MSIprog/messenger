@@ -11,13 +11,15 @@ struct UserInfo
     QDateTime m_refresh_time;
 };
 
-// todo: хранить историю сообщений
 struct Message
 {
-    Message(bool a_sentToSender, const QDateTime &a_date, const QString &a_text) :
-        m_sentToSender(a_sentToSender), m_date(a_date), m_text(a_text)
-    {
-    }
+    static QString encode(const QString &a_string);
+    static QString decode(const QString &a_string);
+    static Message fromString(const QString &a_string, bool *a_ok = nullptr);
+
+    QString toString() const;
+
+    inline static const QString m_dateTimeFormat{ "dd.MM.yyyy hh:mm:ss" };
 
     bool m_sentToSender = false;
     QDateTime m_date;
@@ -82,12 +84,13 @@ private:
 
     template<typename T> bool tryHandleSignal(const QString &a_signal, const QVariant &a_value);
     template<typename T> void handleSignal(const T &a_signal);
+    void addMessageToHistory(const QString &a_id, const Message &a_message);
 
     std::shared_ptr<Signaling> m_signaling;
     QString m_id;
     QString m_name;
     bool m_online = true;
-    QMap<QString, QList<Message>> m_history;
+    std::map<QString, QList<Message>> m_history;
     QTimer m_sendTimer; // таймер для sendUserInfo
     QMap<QString, bool> m_typing;
     std::map<QString, UserInfo> m_users;

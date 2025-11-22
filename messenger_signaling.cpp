@@ -1,5 +1,71 @@
 ﻿#include <QUuid>
+#include <QFile>
+#include <QDir>
 #include "messenger_signaling.h"
+
+QString Message::encode(const QString &a_string)
+{
+    QString result;
+    std::for_each(a_string.begin(), a_string.end(), [&result](auto a_char) mutable
+        {
+            if (a_char == '\n')
+                result.append("\\n");
+            else if (a_char == '\\')
+                result.append("\\\\");
+            else
+                result.append(a_char);
+        });
+    return result;
+}
+
+QString Message::decode(const QString &a_string)
+{
+    QString result;
+    std::for_each(a_string.begin(), a_string.end(), [m_escape = false, &result](auto a_char) mutable
+        {
+            if (m_escape)
+            {
+                if (a_char == 'n')
+                    result.append('\n');
+                else if (a_char == '\\')
+                    result.append('\\');
+                m_escape = false;
+            }
+            else if (a_char == '\\')
+                m_escape = true;
+            else
+                result.append(a_char);
+        });
+    return result;
+}
+
+Message Message::fromString(const QString &a_string, bool *a_ok)
+{
+    Message result;
+    if (a_string.length() < 1 + m_dateTimeFormat.length())
+    {
+        if (a_ok != nullptr)
+            *a_ok = false;
+        return result;
+    }
+    result.m_date = QDateTime::fromString(a_string.mid(1, m_dateTimeFormat.length()), m_dateTimeFormat);
+    if ((a_string[0] != '>' && a_string[0] != '<') || !result.m_date.isValid())
+    {
+        if (a_ok != nullptr)
+            *a_ok = false;
+        return result;
+    }
+    result.m_sentToSender = a_string[0] == '>';
+    if (a_ok != nullptr)
+        *a_ok = true;
+    result.m_text = decode(a_string.mid(1 + m_dateTimeFormat.length()));
+    return result;
+}
+
+QString Message::toString() const
+{
+    return QString("%1%2%3").arg(m_sentToSender ? ">" : "<").arg(m_date.toString(m_dateTimeFormat)).arg(encode(m_text));
+}
 
 //-------------------------------------------------------------------------------------------------
 struct UserInfoSignal : AttributeContainer
@@ -63,6 +129,21 @@ MessengerSignaling::MessengerSignaling(std::shared_ptr<Signaling> a_signaling)
     connect(&m_sendTimer, &QTimer::timeout, this, &MessengerSignaling::sendUserInfo);
     connect(&m_kickTimer, &QTimer::timeout, this, &MessengerSignaling::autoKickUser);
     m_kickTimer.start(1000);
+
+    for (auto fileInfo : QDir("messages").entryInfoList(QDir::Files))
+    {
+        QFile file(fileInfo.absoluteFilePath());
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        QTextStream stream(&file);
+        while (!stream.atEnd())
+        {
+            bool ok = false;
+            auto message = Message::fromString(stream.readLine(), &ok);
+            if (ok)
+                m_history[fileInfo.fileName()].push_back(message);
+        }
+    }
 }
 
 QString MessengerSignaling::getId() const
@@ -120,7 +201,7 @@ QList<Message> MessengerSignaling::getMessages(const QString &a_sender)
 void MessengerSignaling::sendMessage(const QString &a_receiver, const QString &a_text)
 {
     m_signaling->sendSignal(getSignalName(MessageSignal::g_signalName, a_receiver), MessageSignal(m_id, a_text).toQVariant());
-    m_history[a_receiver].append(Message(false, QDateTime::currentDateTime(), a_text));
+    addMessageToHistory(a_receiver, Message{ false, QDateTime::currentDateTime(), a_text });
 }
 
 bool MessengerSignaling::isTyping(const QString &a_sender)
@@ -215,7 +296,7 @@ template<> void MessengerSignaling::handleSignal(const UserInfoSignal &a_data)
 template<> void MessengerSignaling::handleSignal(const MessageSignal &a_data)
 {
     auto date = QDateTime::currentDateTime();
-    m_history[a_data.get_sender()].append(Message(true, date, a_data.get_text()));
+    addMessageToHistory(a_data.get_sender(), Message{ true, date, a_data.get_text() });
     emit messageReceived(a_data.get_sender(), date, a_data.get_text());
 }
 
@@ -223,4 +304,17 @@ template<> void MessengerSignaling::handleSignal(const TypingSignal &a_data)
 {
     m_typing[a_data.get_sender()] = a_data.get_typing();
     emit typing(a_data.get_sender(), a_data.get_typing());
+}
+
+void MessengerSignaling::addMessageToHistory(const QString &a_id, const Message &a_message)
+{
+    m_history[a_id].append(a_message);
+
+    // сохраняем в файл
+    if (!QDir().mkpath("messages"))
+        return;
+    QFile file(QString("messages") + QDir::separator() + a_id);
+    if (!file.open(QIODevice::Append))
+        return;
+    QTextStream(&file) << a_message.toString() << '\n';
 }
